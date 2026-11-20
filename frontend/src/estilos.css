@@ -267,10 +267,17 @@ legend { font-size: .85rem; font-weight: 500; color: #334155; margin-bottom: .5r
 }
 @media (max-width: 760px) {
   .app { grid-template-columns: 1fr; background: var(--fundo); }
-  .menu { border-right: 0; border-bottom: 1px solid var(--borda); position: static; height: auto; flex-direction: row; align-items: center; padding: .7rem 1rem; gap: .6rem; overflow-x: auto; }
-  .menu nav { flex-direction: row; }
+  .menu {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0; height: auto; z-index: 40;
+    flex-direction: row; justify-content: space-around; gap: 0; padding: .35rem .4rem;
+    border-right: 0; border-top: 1px solid var(--borda); box-shadow: 0 -4px 16px rgba(15, 23, 42, .06);
+  }
+  .menu .marca { display: none; }
+  .menu nav { flex-direction: row; flex: 3; justify-content: space-around; gap: 0; }
+  .menu nav a, .menu-sair { flex-direction: column; gap: .15rem; padding: .4rem .5rem; font-size: .72rem; flex: 1; justify-content: center; }
   .menu-sair { margin-top: 0; }
-  .marca span:last-child, .usuario-nome { display: none; }
+  .principal { padding-bottom: 4.5rem; }
+  .usuario-nome { display: none; }
   .topo { padding: .6rem 1rem; }
   .conteudo { padding: 1.2rem 1rem 2rem; }
   .indicadores { grid-template-columns: 1fr; }

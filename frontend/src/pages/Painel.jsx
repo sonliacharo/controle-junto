@@ -40,6 +40,7 @@ export default function Painel() {
   if (!dados) return <p className="vazio">{erro || 'Carregando…'}</p>;
 
   const orc = dados.orcamento;
+  const percentual = Number(orc.percentualUsado ?? 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
   const total = Number(dados.totalMes);
   const limite = orc.valorLimite ? Number(orc.valorLimite) : null;
   const restante = limite !== null ? limite - total : null;
@@ -73,7 +74,7 @@ export default function Painel() {
       {orc.alerta && (
         <div className="aviso alerta">
           <Icone nome="alerta" />
-          <span>Atenção: você já usou <b>{orc.percentualUsado}%</b> do orçamento de {MESES[mes - 1].toLowerCase()}.</span>
+          <span>Atenção: você já usou <b>{percentual}%</b> do orçamento de {MESES[mes - 1].toLowerCase()}.</span>
         </div>
       )}
 
@@ -101,10 +102,10 @@ export default function Painel() {
               <strong className={restante < 0 ? 'negativo' : ''}>
                 {restante >= 0 ? `Restam ${reais(restante)}` : `${reais(-restante)} acima`}
               </strong>
-              <div className="barra" aria-label={`${orc.percentualUsado}% usado`}>
+              <div className="barra" aria-label={`${percentual}% usado`}>
                 <div className={`barra-preenchida ${orc.alerta ? 'perigo' : ''}`} style={{ width: `${Math.min(orc.percentualUsado, 100)}%` }} />
               </div>
-              <span className="detalhe">{orc.percentualUsado}% de {reais(limite)} ·{' '}
+              <span className="detalhe">{percentual}% de {reais(limite)} ·{' '}
                 <button className="link" onClick={() => { setValorOrcamento(limite); setEditandoOrcamento(true); }}>alterar</button>
               </span>
             </>
