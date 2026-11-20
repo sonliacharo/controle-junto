@@ -61,6 +61,19 @@ public class GrupoController {
         return grupos.registrarDespesa(UsuarioLogado.id(), id, req);
     }
 
+    /** RN-002: só quem registrou a despesa pode editá-la. */
+    @PutMapping("/grupos/{id}/despesas/{despesaId}")
+    public GrupoDetalheResponse editarDespesa(@PathVariable Long id, @PathVariable Long despesaId,
+                                              @Valid @RequestBody DespesaRequest req) {
+        return grupos.editarDespesa(UsuarioLogado.id(), id, despesaId, req);
+    }
+
+    /** RN-002: só quem registrou a despesa pode excluí-la. */
+    @DeleteMapping("/grupos/{id}/despesas/{despesaId}")
+    public GrupoDetalheResponse excluirDespesa(@PathVariable Long id, @PathVariable Long despesaId) {
+        return grupos.excluirDespesa(UsuarioLogado.id(), id, despesaId);
+    }
+
     @PostMapping("/grupos/{id}/encerrar")
     public GrupoDetalheResponse encerrar(@PathVariable Long id) {
         return grupos.encerrar(UsuarioLogado.id(), id);

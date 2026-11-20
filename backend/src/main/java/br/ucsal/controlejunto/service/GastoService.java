@@ -1,18 +1,24 @@
 package br.ucsal.controlejunto.service;
 
 import br.ucsal.controlejunto.domain.Categoria;
+import br.ucsal.controlejunto.domain.DespesaGrupo;
+import br.ucsal.controlejunto.domain.Divisao;
 import br.ucsal.controlejunto.domain.Gasto;
 import br.ucsal.controlejunto.domain.Usuario;
 import br.ucsal.controlejunto.dto.GastoDTOs.*;
 import br.ucsal.controlejunto.exception.AcessoNegadoException;
 import br.ucsal.controlejunto.exception.NaoEncontradoException;
 import br.ucsal.controlejunto.repository.CategoriaRepository;
+import br.ucsal.controlejunto.repository.DivisaoRepository;
 import br.ucsal.controlejunto.repository.GastoRepository;
 import br.ucsal.controlejunto.repository.UsuarioRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /** Gastos pessoais (RF-003, RF-004, RF-014, RF-016) e sugestão de categoria (RF-010). */
@@ -23,13 +29,15 @@ public class GastoService {
     private final CategoriaRepository categorias;
     private final UsuarioRepository usuarios;
     private final ServicoCategorizacaoIA ia;
+    private final DivisaoRepository divisoes;
 
     public GastoService(GastoRepository gastos, CategoriaRepository categorias,
-                        UsuarioRepository usuarios, ServicoCategorizacaoIA ia) {
+                        UsuarioRepository usuarios, ServicoCategorizacaoIA ia, DivisaoRepository divisoes) {
         this.gastos = gastos;
         this.categorias = categorias;
         this.usuarios = usuarios;
         this.ia = ia;
+        this.divisoes = divisoes;
     }
 
     @Transactional(readOnly = true)
@@ -49,13 +57,42 @@ public class GastoService {
         return new SugestaoResponse(paraResponse(categoria), sugestao.origem());
     }
 
+    /** De onde vêm os itens da lista de gastos (RF-014). */
+    public enum Origem { PESSOAL, GRUPOS, TODOS }
+
+    /**
+     * RF-014: lista os gastos do mês com filtros por categoria e por grupo.
+     * Com grupoId, mostra só a parte do usuário nas despesas daquele grupo.
+     */
     @Transactional(readOnly = true)
-    public List<GastoResponse> listar(Long usuarioId, int mes, int ano, Long categoriaId) {
+    public List<GastoResponse> listar(Long usuarioId, int mes, int ano, Long categoriaId,
+                                      Origem origem, Long grupoId) {
         YearMonth ym = YearMonth.of(ano, mes);
-        List<Gasto> lista = categoriaId == null
-                ? gastos.buscar(usuarioId, ym.atDay(1), ym.atEndOfMonth())
-                : gastos.buscarPorCategoria(usuarioId, ym.atDay(1), ym.atEndOfMonth(), categoriaId);
-        return lista.stream().map(GastoService::paraResponse).toList();
+        LocalDate inicio = ym.atDay(1);
+        LocalDate fim = ym.atEndOfMonth();
+        if (grupoId != null) {
+            origem = Origem.GRUPOS;
+        }
+
+        List<GastoResponse> resultado = new ArrayList<>();
+        if (origem != Origem.GRUPOS) {
+            List<Gasto> lista = categoriaId == null
+                    ? gastos.buscar(usuarioId, inicio, fim)
+                    : gastos.buscarPorCategoria(usuarioId, inicio, fim, categoriaId);
+            lista.stream().map(GastoService::paraResponse).forEach(resultado::add);
+        }
+        if (origem != Origem.PESSOAL) {
+            divisoes.buscarDoUsuario(usuarioId, inicio, fim, grupoId, categoriaId).stream()
+                    .map(GastoService::paraResponse).forEach(resultado::add);
+        }
+        resultado.sort(Comparator.comparing(GastoResponse::data).reversed());
+        return resultado;
+    }
+
+    /** Lista de gastos usada no relatório em PDF (RF-015). */
+    @Transactional(readOnly = true)
+    public List<GastoResponse> listarParaRelatorio(Long usuarioId, int mes, int ano) {
+        return listar(usuarioId, mes, ano, null, Origem.TODOS, null);
     }
 
     @Transactional
@@ -100,6 +137,13 @@ public class GastoService {
 
     static GastoResponse paraResponse(Gasto g) {
         return new GastoResponse(g.getId(), g.getValor(), g.getData(), g.getDescricao(),
-                paraResponse(g.getCategoria()), g.getComentario());
+                paraResponse(g.getCategoria()), g.getComentario(), "PESSOAL", null, null, null);
+    }
+
+    static GastoResponse paraResponse(Divisao v) {
+        DespesaGrupo d = v.getDespesa();
+        return new GastoResponse(d.getId(), v.getValorDevido(), d.getData(), d.getDescricao(),
+                d.getCategoria() == null ? null : paraResponse(d.getCategoria()), d.getComentario(),
+                "GRUPO", d.getGrupo().getId(), d.getGrupo().getNome(), d.getValor());
     }
 }

@@ -15,6 +15,8 @@ public interface DividaRepository extends JpaRepository<Divida, Long> {
 
     long countByGrupoIdAndStatus(Long grupoId, StatusDivida status);
 
+    List<Divida> findByDespesaId(Long despesaId);
+
     /** Quanto o usuário deve, somando todos os grupos (para o dashboard). */
     @Query("""
            select coalesce(sum(d.valor), 0) from Divida d

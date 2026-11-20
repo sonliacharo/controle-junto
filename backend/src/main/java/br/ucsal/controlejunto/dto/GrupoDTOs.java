@@ -35,7 +35,8 @@ public final class GrupoDTOs {
             @NotNull(message = "Informe quem pagou.") Long pagadorId,
             Long categoriaId,
             @NotEmpty(message = "Selecione os participantes da divisão.") List<Long> participantesIds,
-            Map<Long, BigDecimal> valores) {
+            Map<Long, BigDecimal> valores,
+            @Size(max = 300, message = "O comentário pode ter no máximo 300 caracteres.") String comentario) {
     }
 
     public record ParticipanteResponse(Long usuarioId, String nome, String email, String papel) {
@@ -44,9 +45,14 @@ public final class GrupoDTOs {
     public record DivisaoResponse(Long usuarioId, String nome, BigDecimal valorDevido) {
     }
 
+    /**
+     * temPagamento = true quando alguma dívida gerada pela despesa já foi quitada;
+     * nesse caso ela não pode mais ser editada nem excluída.
+     */
     public record DespesaResponse(Long id, String descricao, BigDecimal valor, LocalDate data,
-                                  Long pagadorId, String pagadorNome, String categoria,
-                                  List<DivisaoResponse> divisoes) {
+                                  Long pagadorId, String pagadorNome, Long categoriaId, String categoria,
+                                  String comentario, Long registradoPorId, String registradoPorNome,
+                                  boolean temPagamento, List<DivisaoResponse> divisoes) {
     }
 
     /** saldo > 0: tem a receber; saldo < 0: deve. */

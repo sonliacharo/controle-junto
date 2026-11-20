@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, dataBR, hojeISO, reais } from '../api.js';
 import SeletorMes from '../components/SeletorMes.jsx';
 import Icone from '../components/Icone.jsx';
+import ExportarPdf from '../components/ExportarPdf.jsx';
 
 const VAZIO = { descricao: '', valor: '', data: hojeISO(), categoriaId: '', comentario: '' };
 
 /**
- * Gastos pessoais: registrar (RF-003), editar/excluir (RF-004), filtrar (RF-014),
- * comentário (RF-016) e categoria sugerida pela IA (RF-010, RN-005).
+ * Gastos pessoais: registrar (RF-003), editar/excluir (RF-004), filtrar por
+ * categoria e por grupo (RF-014), comentário (RF-016), categoria sugerida pela
+ * IA (RF-010, RN-005) e exportar o relatório em PDF (RF-015).
  */
 export default function Gastos() {
   const hoje = new Date();
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [ano, setAno] = useState(hoje.getFullYear());
   const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [filtroOrigem, setFiltroOrigem] = useState('PESSOAL'); // PESSOAL, TODOS, GRUPOS ou o id do grupo
   const [categorias, setCategorias] = useState([]);
+  const [grupos, setGrupos] = useState([]);
   const [gastos, setGastos] = useState([]);
   const [form, setForm] = useState(VAZIO);
   const [editandoId, setEditandoId] = useState(null);
@@ -23,13 +28,20 @@ export default function Gastos() {
   const [erro, setErro] = useState('');
   const temporizador = useRef(null);
 
-  useEffect(() => { api.get('/categorias').then(setCategorias); }, []);
+  useEffect(() => {
+    api.get('/categorias').then(setCategorias).catch(() => {});
+    api.get('/grupos').then(setGrupos).catch(() => {});
+  }, []);
 
+  // RF-014: filtros por categoria e por grupo
   const carregar = () => {
-    const filtro = filtroCategoria ? `&categoriaId=${filtroCategoria}` : '';
-    api.get(`/gastos?mes=${mes}&ano=${ano}${filtro}`).then(setGastos).catch((e) => setErro(e.message));
+    const params = new URLSearchParams({ mes, ano });
+    if (filtroCategoria) params.set('categoriaId', filtroCategoria);
+    if (/^\d+$/.test(filtroOrigem)) params.set('grupoId', filtroOrigem);
+    else params.set('origem', filtroOrigem);
+    api.get(`/gastos?${params}`).then(setGastos).catch((e) => setErro(e.message));
   };
-  useEffect(carregar, [mes, ano, filtroCategoria]);
+  useEffect(carregar, [mes, ano, filtroCategoria, filtroOrigem]);
 
   // Pede a sugestão da IA quando o usuário para de digitar a descrição
   const mudarDescricao = (texto) => {
@@ -89,7 +101,10 @@ export default function Gastos() {
           <h1>Meus gastos</h1>
           <p className="subtitulo">Registre seus gastos do dia a dia.</p>
         </div>
-        <SeletorMes mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); }} />
+        <div className="acoes">
+          <ExportarPdf mes={mes} ano={ano} />
+          <SeletorMes mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); }} />
+        </div>
       </div>
 
       <section className="cartao">
@@ -136,10 +151,22 @@ export default function Gastos() {
       <section className="cartao">
         <div className="cartao-cabecalho">
           <h2>Gastos do mês <span className="total-lista">{reais(total)}</span></h2>
-          <select className="filtro" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} aria-label="Filtrar por categoria">
-            <option value="">Todas as categorias</option>
-            {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-          </select>
+          <div className="filtros">
+            <select className="filtro" value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} aria-label="Filtrar por grupo">
+              <option value="PESSOAL">Somente gastos pessoais</option>
+              <option value="TODOS">Pessoais e de grupos</option>
+              {grupos.length > 0 && (
+                <optgroup label="Grupos">
+                  <option value="GRUPOS">Todos os grupos</option>
+                  {grupos.map((gr) => <option key={gr.id} value={gr.id}>{gr.nome}</option>)}
+                </optgroup>
+              )}
+            </select>
+            <select className="filtro" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} aria-label="Filtrar por categoria">
+              <option value="">Todas as categorias</option>
+              {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+          </div>
         </div>
         {gastos.length === 0 ? <p className="vazio">Nenhum gasto encontrado.</p> : (
           <table className="tabela">
@@ -148,14 +175,26 @@ export default function Gastos() {
             </thead>
             <tbody>
               {gastos.map((g) => (
-                <tr key={g.id}>
+                <tr key={`${g.origem}-${g.id}`}>
                   <td>{dataBR(g.data)}</td>
-                  <td>{g.descricao}{g.comentario && <small className="comentario">{g.comentario}</small>}</td>
-                  <td><span className="etiqueta">{g.categoria.nome}</span></td>
+                  <td>
+                    {g.descricao}
+                    {g.origem === 'GRUPO' && (
+                      <small>Sua parte de {reais(g.valorTotal)} · <Link to={`/grupos/${g.grupoId}`} className="etiqueta grupo">{g.grupoNome}</Link></small>
+                    )}
+                    {g.comentario && <small className="comentario">{g.comentario}</small>}
+                  </td>
+                  <td>{g.categoria ? <span className="etiqueta">{g.categoria.nome}</span> : <span className="etiqueta cinza">Sem categoria</span>}</td>
                   <td className="direita valor">{reais(g.valor)}</td>
                   <td className="direita acoes-linha">
-                    <button className="botao-icone" onClick={() => editar(g)} aria-label="Editar"><Icone nome="editar" /></button>
-                    <button className="botao-icone" onClick={() => excluir(g)} aria-label="Excluir"><Icone nome="lixo" /></button>
+                    {g.origem === 'PESSOAL' ? (
+                      <>
+                        <button className="botao-icone" onClick={() => editar(g)} aria-label="Editar"><Icone nome="editar" /></button>
+                        <button className="botao-icone" onClick={() => excluir(g)} aria-label="Excluir"><Icone nome="lixo" /></button>
+                      </>
+                    ) : (
+                      <Link to={`/grupos/${g.grupoId}`} className="botao-icone" aria-label={`Abrir o grupo ${g.grupoNome}`} title="Abrir o grupo"><Icone nome="grupos" /></Link>
+                    )}
                   </td>
                 </tr>
               ))}

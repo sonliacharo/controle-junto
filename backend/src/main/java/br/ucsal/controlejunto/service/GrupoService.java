@@ -73,8 +73,15 @@ public class GrupoService {
                         p.getUsuario().getEmail(), p.getPapel().name()))
                 .toList();
 
+        List<Divida> todasDividas = dividas.findByGrupoIdOrderByIdAsc(grupoId);
+        Set<Long> despesasComPagamento = new HashSet<>();
+        todasDividas.stream().filter(d -> !d.isPendente())
+                .forEach(d -> despesasComPagamento.add(d.getDespesa().getId()));
+
         List<DespesaGrupo> listaDespesas = despesas.findByGrupoIdOrderByDataDescIdDesc(grupoId);
-        List<DespesaResponse> despesasResp = listaDespesas.stream().map(GrupoService::paraResponse).toList();
+        List<DespesaResponse> despesasResp = listaDespesas.stream()
+                .map(d -> paraResponse(d, despesasComPagamento.contains(d.getId())))
+                .toList();
         BigDecimal totalGasto = listaDespesas.stream().map(DespesaGrupo::getValor)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -88,7 +95,7 @@ public class GrupoService {
                 })
                 .toList();
 
-        List<DividaResponse> dividasResp = dividas.findByGrupoIdOrderByIdAsc(grupoId).stream()
+        List<DividaResponse> dividasResp = todasDividas.stream()
                 .map(GrupoService::paraResponse).toList();
 
         return new GrupoDetalheResponse(grupo.getId(), grupo.getNome(), grupo.getStatus().name(),
@@ -181,74 +188,159 @@ public class GrupoService {
         Grupo grupo = participacaoObrigatoria(grupoId, usuarioId).getGrupo();
         exigirAtivo(grupo);
 
-        Map<Long, Usuario> membros = new HashMap<>();
-        participacoes.findByGrupoIdOrderByIdAsc(grupoId)
-                .forEach(p -> membros.put(p.getUsuario().getId(), p.getUsuario()));
+        Map<Long, Usuario> membros = membros(grupoId);
+        Usuario pagador = pagador(membros, req);
+        Map<Long, BigDecimal> partes = calcularPartes(membros, req);
 
-        Usuario pagador = Optional.ofNullable(membros.get(req.pagadorId()))
-                .orElseThrow(() -> new RegraNegocioException("Quem pagou precisa ser participante do grupo."));
-
-        List<Long> selecionados = req.participantesIds().stream().distinct().toList();
-        for (Long id : selecionados) {
-            if (!membros.containsKey(id)) {
-                throw new RegraNegocioException("Todos os participantes da divisão precisam fazer parte do grupo.");
-            }
-        }
-
-        boolean personalizada = req.valores() != null && !req.valores().isEmpty();
-        Map<Long, BigDecimal> partes;
-        if (personalizada) {
-            if (!new HashSet<>(selecionados).equals(req.valores().keySet())) {
-                throw new RegraNegocioException("Informe um valor para cada participante selecionado.");
-            }
-            partes = CalculadoraDivisao.personalizada(req.valor(), req.valores()); // RN-008
-        } else {
-            partes = CalculadoraDivisao.igualitaria(req.valor(), selecionados);    // RN-001
-        }
-
-        Categoria categoria = req.categoriaId() == null ? null
-                : categorias.findById(req.categoriaId()).orElse(null);
-
-        DespesaGrupo despesa = new DespesaGrupo(grupo, pagador, membros.get(usuarioId), categoria,
-                req.descricao().trim(), req.valor(), req.data());
+        DespesaGrupo despesa = new DespesaGrupo(grupo, pagador, membros.get(usuarioId), categoria(req),
+                req.descricao().trim(), req.valor(), req.data(), comentario(req));
         partes.forEach((id, valor) -> despesa.adicionarDivisao(membros.get(id), valor));
         despesas.save(despesa);
 
-        partes.forEach((id, valor) -> {
-            if (!id.equals(pagador.getId()) && valor.signum() > 0) {
-                Usuario devedor = membros.get(id);
-                dividas.save(new Divida(grupo, despesa, devedor, pagador, valor));
-                notificacoes.notificar(devedor, "Você deve " + REAIS.format(valor) + " a " + pagador.getNome()
-                        + " pela despesa \"" + despesa.getDescricao() + "\" no grupo \"" + grupo.getNome() + "\".");
-            }
-        });
+        gerarDividas(despesa, partes, membros, "Você deve ");
         return detalhar(usuarioId, grupoId);
     }
 
-    /** RF-009: o devedor (ou quem recebe) marca a dívida como paga. */
+    /**
+     * RN-002: só quem registrou a despesa pode editá-la. A divisão e as dívidas
+     * são refeitas; por isso a edição só é permitida enquanto nenhuma dívida
+     * da despesa tiver sido quitada.
+     */
+    @Transactional
+    public GrupoDetalheResponse editarDespesa(Long usuarioId, Long grupoId, Long despesaId, DespesaRequest req) {
+        DespesaGrupo despesa = despesaDoAutor(usuarioId, grupoId, despesaId, "editada");
+
+        Map<Long, Usuario> membros = membros(grupoId);
+        Usuario pagador = pagador(membros, req);
+        Map<Long, BigDecimal> partes = calcularPartes(membros, req);
+
+        List<Divida> antigas = dividas.findByDespesaId(despesaId);
+        dividas.deleteAll(antigas);
+        dividas.flush();
+
+        despesa.atualizar(pagador, categoria(req), req.descricao().trim(), req.valor(), req.data(), comentario(req));
+        despesa.limparDivisoes();
+        despesas.flush();
+        partes.forEach((id, valor) -> despesa.adicionarDivisao(membros.get(id), valor));
+
+        gerarDividas(despesa, partes, membros, "A despesa foi alterada. Agora você deve ");
+
+        // Avisa quem devia antes e não deve mais
+        Set<Long> devedoresAtuais = new HashSet<>(partes.keySet());
+        devedoresAtuais.remove(pagador.getId());
+        antigas.stream().map(Divida::getDevedor)
+                .filter(u -> !devedoresAtuais.contains(u.getId()))
+                .distinct()
+                .forEach(u -> notificacoes.notificar(u, "A despesa \"" + despesa.getDescricao() + "\" do grupo \""
+                        + despesa.getGrupo().getNome() + "\" foi alterada e você não deve mais nada por ela."));
+        return detalhar(usuarioId, grupoId);
+    }
+
+    /** RN-002: só quem registrou a despesa pode excluí-la (e só se nada foi pago ainda). */
+    @Transactional
+    public GrupoDetalheResponse excluirDespesa(Long usuarioId, Long grupoId, Long despesaId) {
+        DespesaGrupo despesa = despesaDoAutor(usuarioId, grupoId, despesaId, "excluída");
+        List<Divida> antigas = dividas.findByDespesaId(despesaId);
+        antigas.stream().map(Divida::getDevedor).distinct()
+                .forEach(u -> notificacoes.notificar(u, "A despesa \"" + despesa.getDescricao() + "\" do grupo \""
+                        + despesa.getGrupo().getNome() + "\" foi excluída e a dívida dela foi cancelada."));
+        dividas.deleteAll(antigas);
+        despesas.delete(despesa);
+        return detalhar(usuarioId, grupoId);
+    }
+
+    /** RF-009: o participante devedor marca a dívida como paga; quem vai receber é notificado. */
     @Transactional
     public GrupoDetalheResponse quitarDivida(Long usuarioId, Long dividaId) {
         Divida divida = dividas.findById(dividaId)
                 .orElseThrow(() -> new NaoEncontradoException("Dívida não encontrada."));
-        boolean envolvido = divida.getDevedor().getId().equals(usuarioId)
-                || divida.getCredor().getId().equals(usuarioId);
-        if (!envolvido) {
-            throw new AcessoNegadoException("Só quem deve ou quem vai receber pode marcar esta dívida como paga.");
+        if (!divida.getDevedor().getId().equals(usuarioId)) {
+            throw new AcessoNegadoException("Só quem deve pode marcar esta dívida como paga.");
         }
+        exigirAtivo(divida.getGrupo());
         if (!divida.isPendente()) {
             throw new RegraNegocioException("Esta dívida já está quitada.");
         }
         divida.quitar();
-        Usuario outro = divida.getDevedor().getId().equals(usuarioId) ? divida.getCredor() : divida.getDevedor();
-        notificacoes.notificar(outro, "A dívida de " + REAIS.format(divida.getValor()) + " de "
-                + divida.getDevedor().getNome() + " para " + divida.getCredor().getNome()
-                + " foi marcada como paga no grupo \"" + divida.getGrupo().getNome() + "\".");
+        notificacoes.notificar(divida.getCredor(), divida.getDevedor().getNome() + " marcou como paga a dívida de "
+                + REAIS.format(divida.getValor()) + " com você no grupo \"" + divida.getGrupo().getNome() + "\".");
         return detalhar(usuarioId, divida.getGrupo().getId());
     }
 
     // ------------------------------------------------------------------
     // Auxiliares
     // ------------------------------------------------------------------
+
+    private Map<Long, Usuario> membros(Long grupoId) {
+        Map<Long, Usuario> membros = new HashMap<>();
+        participacoes.findByGrupoIdOrderByIdAsc(grupoId)
+                .forEach(p -> membros.put(p.getUsuario().getId(), p.getUsuario()));
+        return membros;
+    }
+
+    private static Usuario pagador(Map<Long, Usuario> membros, DespesaRequest req) {
+        return Optional.ofNullable(membros.get(req.pagadorId()))
+                .orElseThrow(() -> new RegraNegocioException("Quem pagou precisa ser participante do grupo."));
+    }
+
+    /** Valida os participantes e calcula a parte de cada um (RN-001 ou RN-008). */
+    private static Map<Long, BigDecimal> calcularPartes(Map<Long, Usuario> membros, DespesaRequest req) {
+        List<Long> selecionados = req.participantesIds().stream().distinct().toList();
+        for (Long id : selecionados) {
+            if (!membros.containsKey(id)) {
+                throw new RegraNegocioException("Todos os participantes da divisão precisam fazer parte do grupo.");
+            }
+        }
+        boolean personalizada = req.valores() != null && !req.valores().isEmpty();
+        if (personalizada) {
+            if (!new HashSet<>(selecionados).equals(req.valores().keySet())) {
+                throw new RegraNegocioException("Informe um valor para cada participante selecionado.");
+            }
+            return CalculadoraDivisao.personalizada(req.valor(), req.valores()); // RN-008
+        }
+        return CalculadoraDivisao.igualitaria(req.valor(), selecionados);        // RN-001
+    }
+
+    /** Cria a dívida de cada participante que não pagou e o notifica (RF-012). */
+    private void gerarDividas(DespesaGrupo despesa, Map<Long, BigDecimal> partes,
+                              Map<Long, Usuario> membros, String inicioMensagem) {
+        Usuario pagador = despesa.getPagador();
+        Grupo grupo = despesa.getGrupo();
+        partes.forEach((id, valor) -> {
+            if (!id.equals(pagador.getId()) && valor.signum() > 0) {
+                Usuario devedor = membros.get(id);
+                dividas.save(new Divida(grupo, despesa, devedor, pagador, valor));
+                notificacoes.notificar(devedor, inicioMensagem + REAIS.format(valor) + " a " + pagador.getNome()
+                        + " pela despesa \"" + despesa.getDescricao() + "\" no grupo \"" + grupo.getNome() + "\".");
+            }
+        });
+    }
+
+    private Categoria categoria(DespesaRequest req) {
+        return req.categoriaId() == null ? null : categorias.findById(req.categoriaId()).orElse(null);
+    }
+
+    private static String comentario(DespesaRequest req) {
+        return req.comentario() == null || req.comentario().isBlank() ? null : req.comentario().trim();
+    }
+
+    /** Busca a despesa garantindo RN-002 (só o autor) e que ela ainda pode mudar. */
+    private DespesaGrupo despesaDoAutor(Long usuarioId, Long grupoId, Long despesaId, String acao) {
+        Grupo grupo = participacaoObrigatoria(grupoId, usuarioId).getGrupo();
+        exigirAtivo(grupo);
+        DespesaGrupo despesa = despesas.findById(despesaId)
+                .filter(d -> d.getGrupo().getId().equals(grupoId))
+                .orElseThrow(() -> new NaoEncontradoException("Despesa não encontrada."));
+        if (!despesa.getRegistradoPor().getId().equals(usuarioId)) {
+            throw new AcessoNegadoException("Apenas quem registrou a despesa pode alterá-la ou excluí-la.");
+        }
+        boolean temPagamento = dividas.findByDespesaId(despesaId).stream().anyMatch(d -> !d.isPendente());
+        if (temPagamento) {
+            throw new RegraNegocioException("Esta despesa não pode ser " + acao
+                    + " porque já tem dívida marcada como paga.");
+        }
+        return despesa;
+    }
 
     private Map<Long, CalculadoraSaldos.Saldo> calcularSaldos(Long grupoId) {
         List<Long> ids = participacoes.findByGrupoIdOrderByIdAsc(grupoId).stream()
@@ -282,13 +374,16 @@ public class GrupoService {
         }
     }
 
-    private static DespesaResponse paraResponse(DespesaGrupo d) {
+    private static DespesaResponse paraResponse(DespesaGrupo d, boolean temPagamento) {
         List<DivisaoResponse> divisoes = d.getDivisoes().stream()
                 .map(v -> new DivisaoResponse(v.getUsuario().getId(), v.getUsuario().getNome(), v.getValorDevido()))
                 .toList();
         return new DespesaResponse(d.getId(), d.getDescricao(), d.getValor(), d.getData(),
                 d.getPagador().getId(), d.getPagador().getNome(),
-                d.getCategoria() == null ? null : d.getCategoria().getNome(), divisoes);
+                d.getCategoria() == null ? null : d.getCategoria().getId(),
+                d.getCategoria() == null ? null : d.getCategoria().getNome(),
+                d.getComentario(), d.getRegistradoPor().getId(), d.getRegistradoPor().getNome(),
+                temPagamento, divisoes);
     }
 
     private static DividaResponse paraResponse(Divida d) {

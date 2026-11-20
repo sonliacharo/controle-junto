@@ -31,16 +31,22 @@ public class GastoController {
         return service.sugerirCategoria(req.descricao());
     }
 
-    /** RF-014: lista os gastos do mês, com filtro opcional por categoria. */
+    /**
+     * RF-014: lista os gastos do mês, com filtros opcionais por categoria e por grupo.
+     * origem: PESSOAL (padrão), GRUPOS ou TODOS. Com grupoId, lista só a parte do
+     * usuário nas despesas daquele grupo.
+     */
     @GetMapping("/gastos")
     public List<GastoResponse> listar(@RequestParam(required = false) Integer mes,
                                       @RequestParam(required = false) Integer ano,
-                                      @RequestParam(required = false) Long categoriaId) {
+                                      @RequestParam(required = false) Long categoriaId,
+                                      @RequestParam(defaultValue = "PESSOAL") GastoService.Origem origem,
+                                      @RequestParam(required = false) Long grupoId) {
         LocalDate hoje = LocalDate.now();
         return service.listar(UsuarioLogado.id(),
                 mes != null ? mes : hoje.getMonthValue(),
                 ano != null ? ano : hoje.getYear(),
-                categoriaId);
+                categoriaId, origem, grupoId);
     }
 
     @PostMapping("/gastos")

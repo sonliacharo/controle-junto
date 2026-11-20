@@ -16,7 +16,8 @@ import java.util.Optional;
 
 /**
  * Gera e valida os tokens JWT de login.
- * O token expira após o tempo configurado (RNF-005: 30 minutos).
+ * O token expira após o tempo configurado (RNF-005: 30 minutos) e é renovado
+ * a cada requisição, então a contagem é de inatividade.
  */
 @Service
 public class JwtService {
@@ -43,10 +44,22 @@ public class JwtService {
 
     /** Devolve o id do usuário se o token for válido e não estiver expirado. */
     public Optional<Long> validar(String token) {
+        return ler(token).map(Claims::getSubject).map(Long::valueOf);
+    }
+
+    /**
+     * RNF-005: se o token for válido, devolve um novo token com mais
+     * {@code expiracaoMinutos} a partir de agora. Assim a sessão só expira
+     * depois de 30 minutos sem nenhuma requisição (inatividade), e não
+     * 30 minutos depois do login.
+     */
+    public Optional<String> renovar(String token) {
+        return ler(token).map(c -> gerarToken(Long.valueOf(c.getSubject()), c.get("email", String.class)));
+    }
+
+    private Optional<Claims> ler(String token) {
         try {
-            Claims claims = Jwts.parser().verifyWith(chave).build()
-                    .parseSignedClaims(token).getPayload();
-            return Optional.of(Long.valueOf(claims.getSubject()));
+            return Optional.of(Jwts.parser().verifyWith(chave).build().parseSignedClaims(token).getPayload());
         } catch (JwtException | IllegalArgumentException e) {
             return Optional.empty();
         }

@@ -12,9 +12,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
-/** Lê o cabeçalho "Authorization: Bearer <token>" e identifica o usuário. */
+/**
+ * Lê o cabeçalho "Authorization: Bearer <token>" e identifica o usuário.
+ * Em toda requisição válida devolve um token renovado no cabeçalho
+ * {@value #CABECALHO_TOKEN_RENOVADO} (RNF-005: expiração por inatividade).
+ */
 @Component
 public class JwtFiltro extends OncePerRequestFilter {
+
+    public static final String CABECALHO_TOKEN_RENOVADO = "X-Token-Renovado";
 
     private final JwtService jwtService;
 
@@ -27,9 +33,11 @@ public class JwtFiltro extends OncePerRequestFilter {
                                     FilterChain chain) throws ServletException, IOException {
         String cabecalho = request.getHeader("Authorization");
         if (cabecalho != null && cabecalho.startsWith("Bearer ")) {
-            jwtService.validar(cabecalho.substring(7)).ifPresent(usuarioId -> {
+            String token = cabecalho.substring(7);
+            jwtService.validar(token).ifPresent(usuarioId -> {
                 var autenticacao = new UsernamePasswordAuthenticationToken(usuarioId, null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(autenticacao);
+                jwtService.renovar(token).ifPresent(novo -> response.setHeader(CABECALHO_TOKEN_RENOVADO, novo));
             });
         }
         chain.doFilter(request, response);

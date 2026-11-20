@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer,
 import { api, dataBR, MESES, reais } from '../api.js';
 import SeletorMes from '../components/SeletorMes.jsx';
 import Icone from '../components/Icone.jsx';
+import ExportarPdf from '../components/ExportarPdf.jsx';
 
 const VERDE = '#21C25E';
 const VERDE_CLARO = '#BDEFCF';
@@ -63,7 +64,10 @@ export default function Painel() {
           <h1>Painel</h1>
           <p className="subtitulo">Resumo dos seus gastos pessoais e dos grupos.</p>
         </div>
-        <SeletorMes mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); }} />
+        <div className="acoes">
+          <ExportarPdf mes={mes} ano={ano} />
+          <SeletorMes mes={mes} ano={ano} onChange={(m, a) => { setMes(m); setAno(a); }} />
+        </div>
       </div>
 
       {orc.alerta && (

@@ -137,6 +137,6 @@ public class DadosIniciais implements CommandLineRunner {
     private void despesa(Usuario quemRegistra, Long grupoId, String descricao, String valor, Usuario pagador,
                          List<Long> participantes, Map<Long, BigDecimal> valores, LocalDate data) {
         grupos.registrarDespesa(quemRegistra.getId(), grupoId,
-                new DespesaRequest(descricao, new BigDecimal(valor), data, pagador.getId(), null, participantes, valores));
+                new DespesaRequest(descricao, new BigDecimal(valor), data, pagador.getId(), null, participantes, valores, null));
     }
 }

@@ -42,6 +42,10 @@ public class DespesaGrupo {
     @Column(name = "data_despesa", nullable = false)
     private LocalDate data;
 
+    /** Observação livre sobre a despesa (RF-016). */
+    @Column(length = 300)
+    private String comentario;
+
     @OneToMany(mappedBy = "despesa", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Divisao> divisoes = new ArrayList<>();
 
@@ -49,18 +53,29 @@ public class DespesaGrupo {
     }
 
     public DespesaGrupo(Grupo grupo, Usuario pagador, Usuario registradoPor, Categoria categoria,
-                        String descricao, BigDecimal valor, LocalDate data) {
+                        String descricao, BigDecimal valor, LocalDate data, String comentario) {
         this.grupo = grupo;
-        this.pagador = pagador;
         this.registradoPor = registradoPor;
+        atualizar(pagador, categoria, descricao, valor, data, comentario);
+    }
+
+    /** RF-004/RN-002: o autor pode corrigir a despesa; as divisões são refeitas por quem chama. */
+    public void atualizar(Usuario pagador, Categoria categoria, String descricao, BigDecimal valor,
+                          LocalDate data, String comentario) {
+        this.pagador = pagador;
         this.categoria = categoria;
         this.descricao = descricao;
         this.valor = valor;
         this.data = data;
+        this.comentario = comentario;
     }
 
     public void adicionarDivisao(Usuario usuario, BigDecimal valorDevido) {
         divisoes.add(new Divisao(this, usuario, valorDevido));
+    }
+
+    public void limparDivisoes() {
+        divisoes.clear();
     }
 
     public Long getId() { return id; }
@@ -71,5 +86,6 @@ public class DespesaGrupo {
     public String getDescricao() { return descricao; }
     public BigDecimal getValor() { return valor; }
     public LocalDate getData() { return data; }
+    public String getComentario() { return comentario; }
     public List<Divisao> getDivisoes() { return divisoes; }
 }

@@ -12,6 +12,8 @@ const caminhos = {
   check: 'M5 12l5 5L20 7',
   alerta: 'M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
   voltar: 'M15 18l-6-6 6-6',
+  baixar: 'M12 3v12M7 10l5 5 5-5M5 21h14',
+  fechar: 'M6 6l12 12M18 6L6 18',
 };
 
 export default function Icone({ nome, tamanho = 18 }) {

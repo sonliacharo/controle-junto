@@ -67,12 +67,22 @@ public class ServicoCategorizacaoIA {
     private final Duration timeout;
 
     public ServicoCategorizacaoIA(@Value("${app.ia.chave:}") String chave,
-                                  @Value("${app.ia.modelo:gemini-2.5-flash}") String modelo,
+                                  @Value("${app.ia.modelo:gemini-3.8-flash}") String modelo,
                                   @Value("${app.ia.timeout-segundos:3}") long timeoutSegundos) {
         this.chave = chave;
         this.modelo = modelo;
         this.timeout = Duration.ofSeconds(timeoutSegundos);
         this.http = HttpClient.newBuilder().connectTimeout(this.timeout).build();
+        if (iaConfigurada()) {
+            log.info("Categorização por IA ativa (Google Gemini, modelo {}).", modelo);
+        } else {
+            log.warn("GEMINI_API_KEY não configurada: a categoria será sugerida pela classificação local "
+                    + "(palavras-chave). Veja o arquivo .env.exemplo.");
+        }
+    }
+
+    private boolean iaConfigurada() {
+        return chave != null && !chave.isBlank();
     }
 
     /** Resultado da sugestão: o nome da categoria e de onde ela veio. */
@@ -80,7 +90,7 @@ public class ServicoCategorizacaoIA {
     }
 
     public Sugestao sugerir(String descricao, List<String> categorias) {
-        if (chave != null && !chave.isBlank()) {
+        if (iaConfigurada()) {
             Optional<String> daIA = perguntarAoModelo(descricao, categorias);
             if (daIA.isPresent()) {
                 return new Sugestao(daIA.get(), "IA");
@@ -96,8 +106,20 @@ public class ServicoCategorizacaoIA {
                 + ". Responda somente com o nome da categoria, exatamente como está na lista. Gasto: "
                 + descricao;
         try {
-            Map<String, Object> corpo = Map.of("contents", List.of(
-                    Map.of("parts", List.of(Map.of("text", prompt)))));
+            Map<String, Object> config = new LinkedHashMap<>();
+            config.put("temperature", 0);
+            // O limite inclui os tokens de "raciocínio" do modelo; a resposta em si é só o nome da categoria
+            config.put("maxOutputTokens", 1024);
+            if (modelo.startsWith("gemini-2.5")) {
+                // Gemini 2.5: desliga o "raciocínio" para responder dentro do limite de tempo (RNF-015)
+                config.put("thinkingConfig", Map.of("thinkingBudget", 0));
+            } else if (modelo.startsWith("gemini-3")) {
+                // Gemini 3.x: não permite desligar o raciocínio; o nível mais baixo é "low"
+                config.put("thinkingConfig", Map.of("thinkingLevel", "low"));
+            }
+            Map<String, Object> corpo = Map.of(
+                    "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt)))),
+                    "generationConfig", config);
             String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                     + URLEncoder.encode(modelo, StandardCharsets.UTF_8) + ":generateContent";
             HttpRequest requisicao = HttpRequest.newBuilder(URI.create(url))
@@ -108,7 +130,8 @@ public class ServicoCategorizacaoIA {
                     .build();
             HttpResponse<String> resposta = http.send(requisicao, HttpResponse.BodyHandlers.ofString());
             if (resposta.statusCode() != 200) {
-                log.warn("API de IA respondeu {}. Usando classificação local.", resposta.statusCode());
+                log.warn("API de IA respondeu {}: {}. Usando classificação local.", resposta.statusCode(),
+                        resposta.body().length() > 300 ? resposta.body().substring(0, 300) : resposta.body());
                 return Optional.empty();
             }
             JsonNode texto = json.readTree(resposta.body())

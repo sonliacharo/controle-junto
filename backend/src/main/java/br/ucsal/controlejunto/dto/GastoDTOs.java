@@ -24,8 +24,15 @@ public final class GastoDTOs {
             @Size(max = 300) String comentario) {
     }
 
+    /**
+     * Item da lista de gastos (RF-014).
+     * origem = "PESSOAL" (gasto pessoal, editável aqui) ou "GRUPO" (parte do usuário
+     * em uma despesa de grupo; valor = parte dele, valorTotal = total da despesa).
+     * categoria pode ser null em despesas de grupo sem categoria.
+     */
     public record GastoResponse(Long id, BigDecimal valor, LocalDate data, String descricao,
-                                CategoriaResponse categoria, String comentario) {
+                                CategoriaResponse categoria, String comentario,
+                                String origem, Long grupoId, String grupoNome, BigDecimal valorTotal) {
     }
 
     public record SugestaoRequest(@NotBlank(message = "Informe a descrição.") String descricao) {

@@ -36,6 +36,15 @@ class CalculadoraDivisaoTest {
                 Map.of(1L, new BigDecimal("50"), 2L, new BigDecimal("30"))));
     }
 
+    /** Cenário do relatório de testes: R$ 90 atribuídos a um só dos 3 selecionados. */
+    @Test
+    void recusaParticipanteSelecionadoComParteZero() {
+        RegraNegocioException erro = assertThrows(RegraNegocioException.class,
+                () -> CalculadoraDivisao.personalizada(new BigDecimal("90"),
+                        Map.of(1L, new BigDecimal("90"), 2L, BigDecimal.ZERO, 3L, BigDecimal.ZERO)));
+        assertTrue(erro.getMessage().contains("maior que zero"));
+    }
+
     @Test
     void recusaValorZeroOuNegativo() {
         assertThrows(RegraNegocioException.class, () -> CalculadoraDivisao.validarTotal(BigDecimal.ZERO));

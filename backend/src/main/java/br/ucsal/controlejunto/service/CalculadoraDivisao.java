@@ -42,7 +42,9 @@ public final class CalculadoraDivisao {
     }
 
     /**
-     * RN-008: na divisão personalizada, a soma das partes deve ser igual ao total.
+     * RN-008: na divisão personalizada, a soma das partes deve ser igual ao total
+     * e cada participante selecionado precisa ter uma parte maior que zero
+     * (quem não entra na divisão deve ser desmarcado, e não ficar com R$ 0,00).
      */
     public static Map<Long, BigDecimal> personalizada(BigDecimal total, Map<Long, BigDecimal> valores) {
         validarTotal(total);
@@ -56,6 +58,10 @@ public final class CalculadoraDivisao {
                     : entrada.getValue().setScale(2, RoundingMode.HALF_UP);
             if (valor.signum() < 0) {
                 throw new RegraNegocioException("O valor de um participante não pode ser negativo.");
+            }
+            if (valor.signum() == 0) {
+                throw new RegraNegocioException("Cada participante selecionado precisa ter um valor maior que zero. "
+                        + "Desmarque quem não entra na divisão.");
             }
             partes.put(entrada.getKey(), valor);
             soma = soma.add(valor);

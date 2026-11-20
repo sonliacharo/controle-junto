@@ -177,6 +177,7 @@ legend { font-size: .85rem; font-weight: 500; color: #334155; margin-bottom: .5r
 .login-cartao .botao { margin-top: .4rem; padding: .75rem 1rem; }
 .login-troca { margin: 0; color: var(--texto-suave); font-size: .92rem; }
 .dica { margin: 0; font-size: .8rem; color: var(--texto-suave); }
+.aviso-login { margin: 0 0 1rem; padding: .7rem .9rem; border-radius: 10px; font-size: .88rem; background: var(--alerta-fundo); color: var(--alerta); border: 1px solid #FDE68A; }
 
 /* ---------- Painel ---------- */
 .indicadores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
@@ -216,6 +217,9 @@ legend { font-size: .85rem; font-weight: 500; color: #334155; margin-bottom: .5r
 .valor { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .acoes-linha { white-space: nowrap; }
 .comentario { font-style: italic; }
+.filtros { display: flex; flex-wrap: wrap; gap: .5rem; }
+.etiqueta.grupo { background: #EEF2FF; color: #4338CA; }
+.etiqueta.grupo:hover { background: #E0E7FF; }
 
 /* ---------- Grupos ---------- */
 .grade-grupos { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
@@ -243,6 +247,9 @@ legend { font-size: .85rem; font-weight: 500; color: #334155; margin-bottom: .5r
 .despesas li { padding: .8rem 0; border-bottom: 1px solid #F1F5F9; }
 .despesa-linha { display: flex; justify-content: space-between; gap: 1rem; }
 .divisoes { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
+.despesa-acoes { display: flex; align-items: center; gap: .1rem; }
+.despesa-acoes .botao-icone { font-size: 1rem; }
+.despesas li.editando { outline: 2px solid var(--primaria-clara); border-radius: 10px; }
 
 .divisao { display: flex; flex-direction: column; gap: .5rem; }
 .alternador { display: inline-flex; background: #F1F5F9; border-radius: 10px; padding: 3px; align-self: flex-start; margin-bottom: .3rem; }

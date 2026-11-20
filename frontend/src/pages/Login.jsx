@@ -1,11 +1,18 @@
-import { useState } from 'react';
-import { api } from '../api.js';
+import { useEffect, useState } from 'react';
+import { api, lerMotivoSaida, limparMotivoSaida, MINUTOS_INATIVIDADE } from '../api.js';
+
+const MENSAGENS_SAIDA = {
+  inatividade: `Sua sessão foi encerrada após ${MINUTOS_INATIVIDADE} minutos sem uso. Entre novamente.`,
+  expirada: 'Sua sessão expirou. Entre novamente.',
+};
 
 /** RF-001 (cadastro) e RF-002 (login). */
 export default function Login({ onEntrar }) {
   const [modo, setModo] = useState('login');
   const [form, setForm] = useState({ nome: '', email: '', senha: '' });
   const [erro, setErro] = useState('');
+  const [aviso] = useState(() => MENSAGENS_SAIDA[lerMotivoSaida()] || '');
+  useEffect(limparMotivoSaida, []);
   const [carregando, setCarregando] = useState(false);
 
   const campo = (nome) => (e) => setForm({ ...form, [nome]: e.target.value });
@@ -36,6 +43,7 @@ export default function Login({ onEntrar }) {
 
         <section className="login-cartao">
           <h1>{modo === 'login' ? 'Acesse sua conta' : 'Crie sua conta'}</h1>
+          {aviso && !erro && <p className="aviso-login">{aviso}</p>}
           <form onSubmit={enviar}>
             {modo === 'cadastro' && (
               <label>Nome
