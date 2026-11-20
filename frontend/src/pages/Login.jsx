@@ -70,9 +70,6 @@ export default function Login({ onEntrar }) {
             {modo === 'login' ? 'Cadastre-se' : 'Entrar'}
           </button>
         </p>
-        {modo === 'login' && (
-          <p className="dica">Demonstração: livia@controlejunto.com · senha 123456</p>
-        )}
       </div>
     </div>
   );
